@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -156,6 +158,27 @@ func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.H
 
 // prepareTransaction creates a signable transaction based on a request.
 func prepareTransaction(ctx context.Context, request *TxRequest, from common.Address, backend Backend, nonce uint64) (tx *types.Transaction, err error) {
+	var gasPriceMul *big.Int
+	var gasLimitMul uint64
+	if os.Getenv("BEE_INTEGRAL_MULTIPLE_GASPRICE") != "" {
+		price, err := strconv.ParseInt(os.Getenv("BEE_INTEGRAL_MULTIPLE_GASPRICE"), 10, 64)
+		if err != nil {
+			price = 2
+		}
+		gasPriceMul = big.NewInt(int64(price))
+	} else {
+		gasPriceMul = big.NewInt(int64(2))
+	}
+	if os.Getenv("BEE_INTEGRAL_MULTIPLE_GASLIMIT") != "" {
+		limit, err := strconv.ParseUint(os.Getenv("BEE_INTEGRAL_MULTIPLE_GASLIMIT"), 10, 64)
+		if err != nil {
+			limit = 2
+		}
+		gasLimitMul = limit
+	} else {
+		gasLimitMul = 2
+	}
+
 	var gasLimit uint64
 	if request.GasLimit == 0 {
 		gasLimit, err = backend.EstimateGas(ctx, ethereum.CallMsg{
@@ -166,6 +189,7 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		if err != nil {
 			return nil, err
 		}
+		gasLimit += gasLimit * gasLimitMul
 	} else {
 		gasLimit = request.GasLimit
 	}
@@ -176,6 +200,7 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		if err != nil {
 			return nil, err
 		}
+		gasPrice.Mul(gasPrice, gasPriceMul)
 	} else {
 		gasPrice = request.GasPrice
 	}

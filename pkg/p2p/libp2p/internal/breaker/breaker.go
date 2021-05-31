@@ -84,9 +84,9 @@ func NewBreaker(o Options) Interface {
 }
 
 func (b *breaker) Execute(f func() error) error {
-	if err := b.beforef(); err != nil {
-		return err
-	}
+	//if err := b.beforef(); err != nil {
+	//	return err
+	//}
 
 	return b.afterf(f())
 }

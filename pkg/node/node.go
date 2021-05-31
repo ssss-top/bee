@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -223,7 +224,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
-
+		logger.Infof("gaslimit mul:[%s], gas price mul:[%s]\n", os.Getenv("BEE_INTEGRAL_MULTIPLE_GASLIMIT"), os.Getenv("BEE_INTEGRAL_MULTIPLE_GASPRICE"))
 		chequebookService, err = InitChequebookService(
 			p2pCtx,
 			logger,
