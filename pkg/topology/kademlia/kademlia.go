@@ -91,6 +91,7 @@ type Kad struct {
 	bootnode          bool           // indicates whether the node is working in bootnode mode
 	collector         *metrics.Collector
 	quit              chan struct{} // quit channel
+	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
@@ -135,6 +136,7 @@ func New(
 		bootnode:          o.BootnodeMode,
 		collector:         metrics.NewCollector(metricsDB),
 		quit:              make(chan struct{}),
+		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
 	}
@@ -462,6 +464,13 @@ func (k *Kad) manage() {
 
 			if k.standalone {
 				continue
+			}
+
+			select {
+			case <-k.halt:
+				// halt stops dial-outs while shutting down
+				continue
+			default:
 			}
 
 			oldDepth := k.NeighborhoodDepth()
@@ -1168,6 +1177,13 @@ func (k *Kad) String() string {
 		return ""
 	}
 	return string(b)
+}
+
+// Halt stops outgoing connections from happening.
+// This is needed while we shut down, so that further topology
+// changes do not happen while we shut down.
+func (k *Kad) Halt() {
+	close(k.halt)
 }
 
 // Close shuts down kademlia.
