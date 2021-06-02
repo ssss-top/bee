@@ -8,6 +8,7 @@ package topology
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/bzz"
 	"io"
 	"time"
 
@@ -66,8 +67,9 @@ type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
 
 // PeerInfo is a view of peer information exposed to a user.
 type PeerInfo struct {
-	Address swarm.Address       `json:"address"`
-	Metrics *MetricSnapshotView `json:"metrics,omitempty"`
+	Address  swarm.Address       `json:"address"`
+	Metrics  *MetricSnapshotView `json:"metrics,omitempty"`
+	Underlay *bzz.Address        `json:"underlay"`
 }
 
 // MetricSnapshotView represents snapshot of metrics counters in more human readable form.

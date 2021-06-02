@@ -1092,12 +1092,18 @@ func (k *Kad) Snapshot() *topology.KadParams {
 	ss := k.collector.Snapshot(time.Now())
 
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		underlay, err := k.addressBook.Get(addr)
+		if err != nil {
+			return true, false, err
+		}
+
 		infos[po].BinConnected++
 		infos[po].ConnectedPeers = append(
 			infos[po].ConnectedPeers,
 			&topology.PeerInfo{
-				Address: addr,
-				Metrics: createMetricsSnapshotView(ss[addr.ByteString()]),
+				Address:  addr,
+				Metrics:  createMetricsSnapshotView(ss[addr.ByteString()]),
+				Underlay: underlay,
 			},
 		)
 		return false, false, nil
@@ -1105,6 +1111,11 @@ func (k *Kad) Snapshot() *topology.KadParams {
 
 	// output (k.knownPeers ¬ k.connectedPeers) here to not repeat the peers we already have in the connected peers list
 	_ = k.knownPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		underlay, err := k.addressBook.Get(addr)
+		if err != nil {
+			return true, false, err
+		}
+
 		infos[po].BinPopulation++
 
 		for _, v := range infos[po].ConnectedPeers {
@@ -1117,8 +1128,9 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		infos[po].DisconnectedPeers = append(
 			infos[po].DisconnectedPeers,
 			&topology.PeerInfo{
-				Address: addr,
-				Metrics: createMetricsSnapshotView(ss[addr.ByteString()]),
+				Address:  addr,
+				Metrics:  createMetricsSnapshotView(ss[addr.ByteString()]),
+				Underlay: underlay,
 			},
 		)
 		return false, false, nil
