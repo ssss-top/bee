@@ -158,6 +158,7 @@ func NewAccounting(
 
 // Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
 func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
+	logPrefix := fmt.Sprintf("[Accounting.Reserve] peer %s", peer)
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
@@ -199,14 +200,24 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// in other words this the debt the other node sees if everything pending is successful
 	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, accountingPeer.shadowReservedBalance)
 
+	a.logger.Infof("%s, currentDebt: %d, nextReserved: %d, expectedDebt: %d, "+
+		"accountingPeer.paymentThreshold: %d, a.earlyPayment: %d, additionalDebt: %d, increasedExpectedDebt: %d, "+
+		"accountingPeer.shadowReservedBalance: %d, increasedExpectedDebtReduced: %d, currentBalance: %d",
+		logPrefix, currentDebt, nextReserved, expectedDebt,
+		accountingPeer.paymentThreshold, a.earlyPayment, additionalDebt, increasedExpectedDebt,
+		accountingPeer.shadowReservedBalance, increasedExpectedDebtReduced, currentBalance)
+
 	// If our expected debt reduced by what could have been credited on the other side already is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
+		a.logger.Infof("%s, before a.settle", peer)
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
+			a.logger.Infof("%s, error a.settle: %s", peer, err)
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
 		}
+		a.logger.Infof("%s, after a.settle", peer)
 	}
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
@@ -289,6 +300,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 
+	a.logger.Infof("[Accounting.settle] peer %s, oldBalance: %d, paymentAmount: %d, timeElapsed: %d", peer, oldBalance, paymentAmount, timeElapsed)
+
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
@@ -296,6 +309,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		if err != nil {
 			return err
 		}
+
+		a.logger.Infof("[Accounting.settle] peer %s, paymentAmount: %d, shadowBalance: %d", peer, paymentAmount, shadowBalance)
 
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
@@ -306,7 +321,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		oldBalance = new(big.Int).Add(oldBalance, acceptedAmount)
 
-		a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, acceptedAmount, oldBalance)
+		a.logger.Tracef("[Accounting.settle] registering refreshment sent to peer %v with amount %d, new balance is %d", peer, acceptedAmount, oldBalance)
 
 		err = a.store.Put(peerBalanceKey(peer), oldBalance)
 		if err != nil {
@@ -314,12 +329,19 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		}
 	}
 
+	a.logger.Infof("[Accounting.settle] peer %s, oldBalance: %d, balance.paymentOngoing: %v", peer, oldBalance, balance.paymentOngoing)
+
 	if a.payFunction != nil && !balance.paymentOngoing {
 		// if there is no monetary settlement happening, check if there is something to settle
 		// compute debt excluding debt created by incoming payments
 		paymentAmount := new(big.Int).Neg(oldBalance)
+
+		a.logger.Infof("[Accounting.settle] peer %s, paymentAmount: %d, a.minimumPayment: %d, paymentAmount.Cmp(big.NewInt(0)): %v",
+			peer, paymentAmount, a.minimumPayment, paymentAmount.Cmp(big.NewInt(0)))
+
 		// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
-		if paymentAmount.Cmp(a.minimumPayment) >= 0 {
+		//if paymentAmount.Cmp(a.minimumPayment) >= 0 {
+		if paymentAmount.Cmp(big.NewInt(0)) > 0 {
 			balance.paymentOngoing = true
 			// add settled amount to shadow reserve before sending it
 			balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
@@ -653,6 +675,8 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		}
 	}
 
+	a.logger.Infof("[Accounting.NotifyPaymentReceived] peer %s, amount: %d", peer, amount)
+
 	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
 	if currentBalance.Cmp(big.NewInt(0)) <= 0 {
 		surplus, err := a.SurplusBalance(peer)
@@ -682,7 +706,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		nextBalance = big.NewInt(0)
 	}
 
-	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+	a.logger.Tracef("[Accounting.NotifyPaymentReceived] crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
@@ -701,7 +725,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		}
 		increasedSurplus := new(big.Int).Add(surplus, surplusGrowth)
 
-		a.logger.Tracef("surplus crediting peer %v with amount %d due to refreshment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
+		a.logger.Tracef("[Accounting.NotifyPaymentReceived] surplus crediting peer %v with amount %d due to refreshment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
 
 		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
 		if err != nil {

@@ -130,12 +130,19 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		err = ErrUnknownBeneficary
 		return
 	}
+
+	s.logger.Infof("[Service.Pay] before s.chequebook.Issue, peer %s, amount: %d", peer, amount)
+
 	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
+		s.logger.Errorf("[Service.Pay] error s.chequebook.Issue: %s, peer %s, amount: %d", err, peer, amount)
 		return
 	}
+
+	s.logger.Infof("[Service.Pay] after s.chequebook.Issue, peer %s, amount: %d", peer, amount)
+
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
 	s.accounting.NotifyPaymentSent(peer, amount, nil)

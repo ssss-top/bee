@@ -475,6 +475,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
+	logger.Infof("[NewBee] paymentThreshold: %d, minThreshold: %d", paymentThreshold, minThreshold)
+
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
@@ -496,6 +498,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if !ok {
 		return nil, fmt.Errorf("invalid payment early: %s", paymentEarly)
 	}
+
+	logger.Infof("[NewBee] paymentTolerance: %d, paymentEarly: %d", paymentTolerance, paymentEarly)
 
 	acc, err := accounting.NewAccounting(
 		paymentThreshold,

@@ -95,7 +95,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
-	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
+	s.logger.Tracef("received payment threshold announcement from peer %v of %d, s.minPaymentThreshold: %d", p.Address, paymentThreshold, s.minPaymentThreshold)
 
 	if paymentThreshold.Cmp(s.minPaymentThreshold) < 0 {
 		s.logger.Tracef("payment threshold from peer %v of %d too small, need at least %d", p.Address, paymentThreshold, s.minPaymentThreshold)

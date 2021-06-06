@@ -343,6 +343,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
+	s.logger.Infof("[retrieval-Service.handler] peer %s", p.Address)
+
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	addr := swarm.NewAddress(req.Addr)
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)

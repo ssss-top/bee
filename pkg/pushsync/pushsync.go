@@ -147,6 +147,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	price := ps.pricer.Price(chunk.Address())
 
+	ps.logger.Infof("[PushSync.handler] peer %s, price: %d", p.Address, price)
+
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
 		bytes := chunk.Address().Bytes()
@@ -154,6 +156,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
 				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
 				defer canceld()
+
+				ps.logger.Infof("[PushSync.handler] peer %s, price: %d, dcmp == 1", p.Address, price)
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 				if err != nil {
