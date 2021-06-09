@@ -211,13 +211,13 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
-		a.logger.Infof("%s, before a.settle", peer)
+		a.logger.Infof("%s, before a.settle", logPrefix)
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
-			a.logger.Infof("%s, error a.settle: %s", peer, err)
+			a.logger.Infof("%s, error a.settle: %s", logPrefix, err)
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
 		}
-		a.logger.Infof("%s, after a.settle", peer)
+		a.logger.Infof("%s, after a.settle", logPrefix)
 	}
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request

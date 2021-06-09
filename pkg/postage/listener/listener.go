@@ -172,7 +172,6 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 
 	l.wg.Add(1)
 	listenf := func() error {
-		defer l.wg.Done()
 		for {
 			select {
 			case <-paged:
@@ -250,20 +249,40 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	}
 
 	go func() {
-		err := listenf()
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				// context cancelled is returned on shutdown,
-				// therefore we do nothing here
-				return
-			}
-			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
-			if l.shutdowner != nil {
-				err = l.shutdowner.Shutdown(context.Background())
-				if err != nil {
-					l.logger.Errorf("failed shutting down node: %v", err)
+		defer l.wg.Done()
+		retry := false
+
+		for {
+			if retry {
+				if err := updater.TransactionDirtyCheck(); err != nil {
+					time.Sleep(time.Second * 5)
+					continue
+				}
+
+				cs := updater.GetChainState()
+				if cs.Block > from {
+					from = cs.Block
 				}
 			}
+
+			err := listenf()
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					// context cancelled is returned on shutdown,
+					// therefore we do nothing here
+					return
+				}
+				/*l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
+				if l.shutdowner != nil {
+					err = l.shutdowner.Shutdown(context.Background())
+					if err != nil {
+						l.logger.Errorf("failed shutting down node: %v", err)
+					}
+				}*/
+			}
+
+			retry = true
+			l.logger.Warningf("[listener.Listen] failed listenf, error: %s, will retry...", err)
 		}
 	}()
 

@@ -241,11 +241,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
 					defer cancel()
 
+					ps.logger.Infof("[PushSync.handler] before ps.accounting.Reserve, peer %s in the neighborhood, receiptPrice: %d", peer, receiptPrice)
+
 					err = ps.accounting.Reserve(ctx, peer, receiptPrice)
 					if err != nil {
 						err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
 						return
 					}
+
+					ps.logger.Infof("[PushSync.handler] after ps.accounting.Reserve, peer %s in the neighborhood, receiptPrice: %d", peer, receiptPrice)
+
 					defer ps.accounting.Release(peer, receiptPrice)
 
 					streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -357,6 +362,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		allowedRetries = maxPeers
 	}
 
+	ps.logger.Infof("[PushSync.pushToClosest] chunk.Address: %s, chunk.TagID: %d, chunk.Depth: %d, chunk.Radius: %d, retryAllowed: %v",
+		ch.Address(), ch.TagID(), ch.Depth(), ch.Radius(), retryAllowed)
+
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipPeers...)
@@ -378,6 +386,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 			defer canceld()
 
+			ps.logger.Infof("[PushSync.pushToClosest] before ps.pushPeer, peer %s, chunk.Address: %s, chunk.TagID: %d",
+				peer, ch.Address(), ch.TagID())
+
 			r, attempted, err := ps.pushPeer(ctxd, peer, ch)
 			// attempted is true if we get past accounting and actually attempt
 			// to send the request to the peer. If we dont get past accounting, we
@@ -385,11 +396,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			if attempted {
 				allowedRetries--
 			}
+
 			if err != nil {
+				ps.logger.Errorf("[PushSync.pushToClosest] after ps.pushPeer, peer %s, chunk.Address: %s, chunk.TagID: %d, attempted: %v, err: %s",
+					peer, ch.Address(), ch.TagID(), attempted, err)
 				logger.Debugf("could not push to peer %s: %v", peer, err)
 				resultC <- &pushResult{err: err, attempted: attempted}
 				return
 			}
+
+			ps.logger.Infof("[PushSync.pushToClosest] after ps.pushPeer, peer %s, chunk.Address: %s, chunk.TagID: %d, receipt: %s",
+				peer, ch.Address(), ch.TagID(), r.String())
+
 			select {
 			case resultC <- &pushResult{receipt: r}:
 			case <-ctx.Done():
@@ -419,11 +437,20 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
+	ps.logger.Infof("[PushSync.pushPeer] before ps.accounting.Reserve, peer %s, chunk.Address: %s, chunk.TagID: %d, receiptPrice: %d",
+		peer, ch.Address(), ch.TagID(), receiptPrice)
+
 	// Reserve to see whether we can make the request
 	err := ps.accounting.Reserve(ctx, peer, receiptPrice)
 	if err != nil {
+		ps.logger.Infof("[PushSync.pushPeer] after ps.accounting.Reserve, peer %s, chunk.Address: %s, chunk.TagID: %d, receiptPrice: %d, err: %s",
+			peer, ch.Address(), ch.TagID(), receiptPrice, err)
 		return nil, false, fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 	}
+
+	ps.logger.Infof("[PushSync.pushPeer] after ps.accounting.Reserve, peer %s, chunk.Address: %s, chunk.TagID: %d, receiptPrice: %d",
+		peer, ch.Address(), ch.TagID(), receiptPrice)
+
 	defer ps.accounting.Release(peer, receiptPrice)
 
 	stamp, err := ch.Stamp().MarshalBinary()
@@ -447,6 +474,9 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		return nil, true, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address(), peer, err)
 	}
 
+	ps.logger.Infof("[PushSync.pushPeer] chunk pushed, peer %s, chunk.Address: %s, chunk.TagID: %d, receiptPrice: %d",
+		peer, ch.Address(), ch.TagID(), receiptPrice)
+
 	ps.metrics.TotalSent.Inc()
 
 	// if you manage to get a tag, just increment the respective counter
@@ -463,6 +493,9 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		_ = streamer.Reset()
 		return nil, true, fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address(), peer, err)
 	}
+
+	ps.logger.Infof("[PushSync.pushPeer] receipt returned, peer %s, chunk.Address: %s, chunk.TagID: %d, receiptPrice: %d",
+		peer, ch.Address(), ch.TagID(), receiptPrice)
 
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		// if the receipt is invalid, try to push to the next peer

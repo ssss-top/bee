@@ -122,6 +122,29 @@ func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
+func (svc *batchService) TransactionDirtyCheck() error {
+	dirty := false
+	err := svc.stateStore.Get(dirtyDBKey, &dirty)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return err
+	}
+	if dirty {
+		svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+		if err := svc.storer.Reset(); err != nil {
+			return err
+		}
+		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
+			return err
+		}
+		svc.logger.Warning("batch service: batch store reset. your node will now resync chain data")
+	}
+	return nil
+}
+
+func (svc *batchService) GetChainState() *postage.ChainState {
+	return svc.storer.GetChainState()
+}
+
 func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
 	dirty := false
 	err := svc.stateStore.Get(dirtyDBKey, &dirty)

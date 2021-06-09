@@ -104,10 +104,21 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
+	reqGasPrice := uint64(0)
+	if request.GasPrice != nil {
+		reqGasPrice = request.GasPrice.Uint64()
+	}
+
+	t.logger.Infof("[transactionService.Send] request GasPrice: %d, GasLimit: %d",
+		reqGasPrice, request.GasLimit)
+
 	tx, err := prepareTransaction(ctx, request, t.sender, t.backend, nonce)
 	if err != nil {
 		return common.Hash{}, err
 	}
+
+	t.logger.Infof("[transactionService.Send] prepareTransaction GasPrice: %d, GasLimit: %d, Cost: %d",
+		tx.GasPrice().Uint64(), tx.Gas(), tx.Cost().Uint64())
 
 	signedTx, err := t.signer.SignTx(tx, t.chainID)
 	if err != nil {

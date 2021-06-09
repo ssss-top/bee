@@ -221,11 +221,20 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		}
 	}()
 
+	s.logger.Infof("[Service.retrieveChunk] before s.accounting.Reserve, closestPeer %s, chunk.Address: %s, chunkPrice: %d",
+		peer, addr, chunkPrice)
+
 	// Reserve to see whether we can request the chunk
 	err = s.accounting.Reserve(ctx, peer, chunkPrice)
 	if err != nil {
+		s.logger.Infof("[Service.retrieveChunk] after s.accounting.Reserve, closestPeer %s, chunk.Address: %s, chunkPrice: %d, err: %s",
+			peer, addr, chunkPrice, err)
 		return nil, peer, err
 	}
+
+	s.logger.Infof("[Service.retrieveChunk] after s.accounting.Reserve, closestPeer %s, chunk.Address: %s, chunkPrice: %d",
+		peer, addr, chunkPrice)
+
 	defer s.accounting.Release(peer, chunkPrice)
 
 	w, r := protobuf.NewWriterAndReader(stream)
@@ -236,8 +245,13 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		return nil, peer, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
 
+	s.logger.Infof("[Service.retrieveChunk] retrieving chunk, closestPeer %s, chunk.Address: %s, chunkPrice: %d",
+		peer, addr, chunkPrice)
+
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
+		s.logger.Errorf("[Service.retrieveChunk] retrieving chunk, closestPeer %s, chunk.Address: %s, chunkPrice: %d, err: %s",
+			peer, addr, chunkPrice, err)
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
@@ -245,6 +259,9 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		WithLabelValues(strconv.Itoa(int(peerPO))).
 		Observe(time.Since(startTimer).Seconds())
 	s.metrics.TotalRetrieved.Inc()
+
+	s.logger.Infof("[Service.retrieveChunk] retrieved chunk, closestPeer %s, chunk.Address: %s, chunkPrice: %d",
+		peer, addr, chunkPrice)
 
 	stamp := new(postage.Stamp)
 	err = stamp.UnmarshalBinary(d.Stamp)

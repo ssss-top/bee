@@ -21,6 +21,8 @@ type EventUpdater interface {
 
 	TransactionStart() error
 	TransactionEnd() error
+	TransactionDirtyCheck() error
+	GetChainState() *ChainState
 }
 
 // Storer represents the persistence layer for batches on the current (highest
