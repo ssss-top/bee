@@ -132,6 +132,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
 				Bootnodes:                  c.config.GetStringSlice(optionNameBootnodes),
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
+				TradeMode:                  c.config.GetBool(optionNameTradeMode),
 				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:            c.config.GetString(optionNameTracingEndpoint),

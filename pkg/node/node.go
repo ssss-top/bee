@@ -122,6 +122,7 @@ type Options struct {
 	Bootnodes                  []string
 	CORSAllowedOrigins         []string
 	Logger                     logging.Logger
+	TradeMode                  bool
 	Standalone                 bool
 	TracingEnabled             bool
 	TracingEndpoint            string
@@ -442,7 +443,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, TradeMode: o.TradeMode, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
 	b.topologyCloser = kad
 	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)

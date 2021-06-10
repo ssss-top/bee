@@ -76,7 +76,7 @@ type PushSync struct {
 
 var defaultTTL = 20 * time.Second                     // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
-var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
+var nPeersToPushsync = 50                             // number of peers to replicate to as receipt is sent upstream
 
 func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{

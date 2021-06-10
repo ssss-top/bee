@@ -63,6 +63,7 @@ var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 type Options struct {
 	SaturationFunc  binSaturationFunc
 	Bootnodes       []ma.Multiaddr
+	TradeMode       bool
 	StandaloneMode  bool
 	BootnodeMode    bool
 	BitSuffixLength int
@@ -87,6 +88,7 @@ type Kad struct {
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
 	logger            logging.Logger // logger
+	trade             bool           // indicates whether the node is working in trade mode
 	standalone        bool           // indicates whether the node is working in standalone mode
 	bootnode          bool           // indicates whether the node is working in bootnode mode
 	collector         *metrics.Collector
@@ -132,6 +134,7 @@ func New(
 		manageC:           make(chan struct{}, 1),
 		waitNext:          waitnext.New(),
 		logger:            logger,
+		trade:             o.TradeMode,
 		standalone:        o.StandaloneMode,
 		bootnode:          o.BootnodeMode,
 		collector:         metrics.NewCollector(metricsDB),
@@ -466,7 +469,7 @@ func (k *Kad) manage() {
 			default:
 			}
 
-			if k.standalone {
+			if k.standalone || k.trade {
 				continue
 			}
 
