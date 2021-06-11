@@ -56,6 +56,7 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("new logger: %v", err)
 			}
 
+			// windows服务
 			isWindowsService, err := isWindowsService()
 			if err != nil {
 				return fmt.Errorf("failed to determine if we are running in service: %w", err)
@@ -161,6 +162,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 			// Wait for termination or interrupt signals.
 			// We want to clean up things at the end.
+			// 监听信号，并退出
 			interruptChannel := make(chan os.Signal, 1)
 			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
@@ -211,6 +213,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				}
 			} else {
 				// start blocks until some interrupt is received
+				// 监听中断信号
 				p.start()
 				p.stop()
 			}

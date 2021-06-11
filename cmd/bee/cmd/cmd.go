@@ -152,14 +152,17 @@ func (c *command) initConfig() (err error) {
 	configName := ".bee"
 	if c.cfgFile != "" {
 		// Use config file from the flag.
+		// 使用命令行指定的配置文件
 		config.SetConfigFile(c.cfgFile)
 	} else {
 		// Search config in home directory with name ".bee" (without extension).
+		// 使用默认的配置文件
 		config.AddConfigPath(c.homeDir)
 		config.SetConfigName(configName)
 	}
 
 	// Environment
+	// 加载环境变量
 	config.SetEnvPrefix("bee")
 	config.AutomaticEnv() // read in environment variables that match
 	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
@@ -169,6 +172,7 @@ func (c *command) initConfig() (err error) {
 	}
 
 	// If a config file is found, read it in.
+	// 加载配置文件
 	if err := config.ReadInConfig(); err != nil {
 		var e viper.ConfigFileNotFoundError
 		if !errors.As(err, &e) {
