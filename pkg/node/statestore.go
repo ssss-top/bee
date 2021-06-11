@@ -21,6 +21,7 @@ import (
 // initialize an in-memory state store that will not be persisted.
 func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer, err error) {
 	if dataDir == "" {
+		// 内存存储
 		ret = mock.NewStateStore()
 		log.Warning("using in-mem state store, no node state will be persisted")
 		return ret, nil
