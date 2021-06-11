@@ -16,9 +16,11 @@ import (
 
 func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool, error)) (bool, error) {
 	if comp, _ := ma.SplitFirst(addr); comp.Protocol().Name != "dnsaddr" {
+		// 如果addr不是dnsaddr协议，则直接连接
 		return f(addr)
 	}
 
+	// 使用默认的解析器, 解析地址
 	dnsResolver := madns.DefaultResolver
 	addrs, err := dnsResolver.Resolve(ctx, addr)
 	if err != nil {
@@ -28,6 +30,7 @@ func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool
 		return false, errors.New("non-resolvable API endpoint")
 	}
 
+	// 打乱addr的顺序，进行连接
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})

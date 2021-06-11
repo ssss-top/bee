@@ -184,12 +184,14 @@ func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	// 是否存在overlays中
 	overlay, found := r.overlays[peerID]
 	if !found {
 		return swarm.ZeroAddress, false
 	}
 
 	// check connection remote address
+	// 是否已经连接了
 	conns, ok := r.connections[peerID]
 	if !ok {
 		return swarm.ZeroAddress, false

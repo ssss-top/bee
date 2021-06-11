@@ -547,6 +547,7 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	// Extract the peer ID from the multiaddr.
+	// 解析remoteAddr
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
 		return nil, fmt.Errorf("addr from p2p: %w", err)
@@ -559,6 +560,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	remoteAddr := addr.Decapsulate(hostAddr)
 
+	// 是否已经连接
 	if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
 		address = &bzz.Address{
 			Overlay:  overlay,
@@ -567,6 +569,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return address, p2p.ErrAlreadyConnected
 	}
 
+	// 进行p2p连接
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
 			s.metrics.ConnectBreakerCount.Inc()

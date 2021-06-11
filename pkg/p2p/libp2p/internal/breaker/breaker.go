@@ -40,7 +40,7 @@ type Interface interface {
 
 type breaker struct {
 	limit                int // breaker will not execute any more tasks after limit number of consecutive failures happen
-	consFailedCalls      int // current number of consecutive fails
+	consFailedCalls      int // current number of consecutive fails // 当前连续失败的次数
 	firstFailedTimestamp time.Time
 	closedTimestamp      time.Time
 	backoff              time.Duration // initial backoff duration
@@ -65,18 +65,22 @@ func NewBreaker(o Options) Interface {
 	}
 
 	if o.Limit == 0 {
+		// 100
 		breaker.limit = limit
 	}
 
 	if o.FailInterval == 0 {
+		// 30min
 		breaker.failInterval = failInterval
 	}
 
 	if o.MaxBackoff == 0 {
+		// 1h
 		breaker.maxBackoff = maxBackoff
 	}
 
 	if o.StartBackoff == 0 {
+		// 2min
 		breaker.backoff = backoff
 	}
 
@@ -91,6 +95,7 @@ func (b *breaker) Execute(f func() error) error {
 	return b.afterf(f())
 }
 
+// 返回close结束的时间
 func (b *breaker) ClosedUntil() time.Time {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
@@ -107,12 +112,16 @@ func (b *breaker) beforef() error {
 	defer b.mtx.Unlock()
 
 	// use timeNow().Sub() instead of time.Since() so it can be deterministically mocked in tests
+	// 如果连续失败大于100次
 	if b.consFailedCalls >= b.limit {
 		if b.closedTimestamp.IsZero() || timeNow().Sub(b.closedTimestamp) < b.backoff {
+			// 如果关闭的时间是0， 或者关闭的时间间隔小于2min, 则直接退出
 			return ErrClosed
 		}
 
+		// 重置失败计数
 		b.resetFailed()
+		// backoff每次都会提升2倍， 最大是1hour
 		if newBackoff := b.backoff * 2; newBackoff <= b.maxBackoff {
 			b.backoff = newBackoff
 		} else {
@@ -121,6 +130,7 @@ func (b *breaker) beforef() error {
 	}
 
 	if !b.firstFailedTimestamp.IsZero() && timeNow().Sub(b.firstFailedTimestamp) >= b.failInterval {
+		// 如果第一次失败的时间大于30分钟，则重置计数
 		b.resetFailed()
 	}
 
@@ -137,6 +147,7 @@ func (b *breaker) afterf(err error) error {
 
 		b.consFailedCalls++
 		if b.consFailedCalls == b.limit {
+			// 如果失败的次数超过limit， 则关闭
 			b.closedTimestamp = timeNow()
 		}
 

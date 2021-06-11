@@ -450,6 +450,7 @@ func (k *Kad) manage() {
 		case <-k.quit:
 			return
 		case <-time.After(30 * time.Second):
+			// 30s执行一次
 			if err := k.collector.Flush(); err != nil {
 				k.logger.Debugf("kademlia: unable to flush metrics counters to the persistent store: %v", err)
 			}
@@ -482,6 +483,7 @@ func (k *Kad) manage() {
 			)
 
 			if k.connectedPeers.Length() == 0 {
+				// 如果节点连接的个数是0, 则连接引导节点
 				select {
 				case <-k.halt:
 					continue
@@ -516,12 +518,15 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 
 	for _, addr := range k.bootnodes {
 		if attempts >= totalAttempts || connected >= 3 {
+			// 如果连接的数量大于3, 或者失败太多次，则返回
 			return
 		}
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
 			k.logger.Tracef("connecting to bootnode %s", addr)
 			if attempts >= maxBootnodeAttempts {
+				// 如果失败太多次，则返回
+				// 这里使用attempts是否有问题 ?
 				return true, nil
 			}
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
