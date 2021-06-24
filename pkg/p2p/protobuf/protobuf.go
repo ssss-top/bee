@@ -55,6 +55,7 @@ func newReader(r ggio.Reader) Reader {
 	return Reader{Reader: r}
 }
 
+// 读msg
 func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error {
 	errChan := make(chan error, 1)
 	go func() {
@@ -77,6 +78,7 @@ func newWriter(r ggio.Writer) Writer {
 	return Writer{Writer: r}
 }
 
+// 写msg
 func (w Writer) WriteMsgWithContext(ctx context.Context, msg proto.Message) error {
 	errChan := make(chan error, 1)
 	go func() {

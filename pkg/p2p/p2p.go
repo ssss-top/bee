@@ -125,5 +125,6 @@ const (
 // NewSwarmStreamName constructs a libp2p compatible stream name out of
 // protocol name and version and stream name.
 func NewSwarmStreamName(protocol, version, stream string) string {
+	// "/swarm/handshake/3.0.0/handshake"
 	return "/swarm/" + protocol + "/" + version + "/" + stream
 }

@@ -125,7 +125,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
+	// 带缓存的读写
 	w, r := protobuf.NewWriterAndReader(stream)
+	// 构建multiaddr地址
 	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
 	if err != nil {
 		return nil, err
@@ -136,12 +138,15 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
+	// 写syn消息
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: fullRemoteMABytes,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
 
+	// 读synAck消息
+	// 消息包含了对方peer节点的信息
 	var resp pb.SynAck
 	if err := r.ReadMsgWithContext(ctx, &resp); err != nil {
 		return nil, fmt.Errorf("read synack message: %w", err)
@@ -173,6 +178,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	}
 
 	// Synced read:
+	// 写ack消息, 包含自己peer节点的信息
 	welcomeMessage := s.GetWelcomeMessage()
 	if err := w.WriteMsgWithContext(ctx, &pb.Ack{
 		Address: &pb.BzzAddress{
@@ -324,6 +330,7 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.Pretty()))
 }
 
+// 解析bzz address
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	if ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible

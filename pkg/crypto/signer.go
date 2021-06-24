@@ -39,12 +39,14 @@ func addEthereumPrefix(data []byte) []byte {
 }
 
 // hashWithEthereumPrefix returns the hash that should be signed for the given data.
+// 添加eth相关的前缀字段，并hash
 func hashWithEthereumPrefix(data []byte) ([]byte, error) {
 	return LegacyKeccak256(addEthereumPrefix(data))
 }
 
 // Recover verifies signature with the data base provided.
 // It is using `btcec.RecoverCompact` function.
+// 恢复公钥
 func Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
 	if len(signature) != 65 {
 		return nil, ErrInvalidLength

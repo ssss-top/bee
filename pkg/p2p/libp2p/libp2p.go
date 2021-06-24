@@ -578,12 +578,14 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, err
 	}
 
+	// 创建handshake流
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("connect new stream: %w", err)
 	}
 
+	// handshake, 交换peer信息
 	handshakeStream := NewStream(stream)
 	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
@@ -592,6 +594,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
+	// 如果peer节点不是full模式
 	if !i.FullNode {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)

@@ -57,6 +57,7 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 }
 
 func ParseAddress(underlay, overlay, signature []byte, networkID uint64) (*Address, error) {
+	// 恢复公钥
 	recoveredPK, err := crypto.Recover(signature, generateSignData(underlay, overlay, networkID))
 	if err != nil {
 		return nil, ErrInvalidAddress
@@ -66,10 +67,12 @@ func ParseAddress(underlay, overlay, signature []byte, networkID uint64) (*Addre
 	if err != nil {
 		return nil, ErrInvalidAddress
 	}
+	// 检查地址是否相等
 	if !bytes.Equal(recoveredOverlay.Bytes(), overlay) {
 		return nil, ErrInvalidAddress
 	}
 
+	// 构造address
 	multiUnderlay, err := ma.NewMultiaddrBytes(underlay)
 	if err != nil {
 		return nil, ErrInvalidAddress
@@ -82,6 +85,7 @@ func ParseAddress(underlay, overlay, signature []byte, networkID uint64) (*Addre
 	}, nil
 }
 
+// 构造签名数据
 func generateSignData(underlay, overlay []byte, networkID uint64) []byte {
 	networkIDBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(networkIDBytes, networkID)
