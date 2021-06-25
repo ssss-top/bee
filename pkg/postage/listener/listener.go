@@ -279,10 +279,11 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 						l.logger.Errorf("failed shutting down node: %v", err)
 					}
 				}*/
+				retry = true
+				l.logger.Warningf("[listener.Listen] failed listenf, error: %s, will retry...", err)
+				continue
 			}
-
-			retry = true
-			l.logger.Warningf("[listener.Listen] failed listenf, error: %s, will retry...", err)
+			return
 		}
 	}()
 
