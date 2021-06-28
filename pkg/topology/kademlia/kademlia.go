@@ -975,6 +975,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 
 // IsWithinDepth returns if an address is within the neighborhood depth of a node.
 func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
+	// addr的相似度是否大于邻居节点的深度
 	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
 }
 

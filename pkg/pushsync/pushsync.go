@@ -101,11 +101,11 @@ func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storag
 
 func (s *PushSync) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
-		Name:    protocolName,
-		Version: protocolVersion,
+		Name:    protocolName,    // pushsync
+		Version: protocolVersion, // 1.0.0
 		StreamSpecs: []p2p.StreamSpec{
 			{
-				Name:    streamName,
+				Name:    streamName, // pushsync
 				Handler: s.handler,
 			},
 		},
@@ -116,7 +116,7 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 // If the current node is the destination, it stores in the local store and sends a receipt.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
+	ctx, cancel := context.WithTimeout(ctx, defaultTTL) // 20s
 	defer cancel()
 	defer func() {
 		if err != nil {
@@ -126,17 +126,21 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			_ = stream.FullClose()
 		}
 	}()
+
+	// 读取delivery消息
 	var ch pb.Delivery
 	if err = r.ReadMsgWithContext(ctx, &ch); err != nil {
 		return fmt.Errorf("pushsync read delivery: %w", err)
 	}
 	ps.metrics.TotalReceived.Inc()
 
+	// 构造chunk, 并验证
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	if chunk, err = ps.validStamp(chunk, ch.Stamp); err != nil {
 		return fmt.Errorf("pushsync valid stamp: %w", err)
 	}
 
+	// ??
 	if cac.Valid(chunk) {
 		if ps.unwrap != nil {
 			go ps.unwrap(chunk)
@@ -150,9 +154,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
 		bytes := chunk.Address().Bytes()
+		// peer的地址是否和chunk的地址更相似一些
 		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
+			// 节点比邻居节点更接近chunk
 			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
-				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor) // 3s
 				defer canceld()
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
@@ -160,10 +166,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					return fmt.Errorf("chunk store: %w", err)
 				}
 
+				// 构造debit
 				debit := ps.accounting.PrepareDebit(p.Address, price)
 				defer debit.Cleanup()
 
 				// return back receipt
+				// 返回chunk地址和签名
 				signature, err := ps.signer.Sign(bytes)
 				if err != nil {
 					return fmt.Errorf("receipt signature: %w", err)
@@ -173,6 +181,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 				}
 
+				// 生效借记
 				return debit.Apply()
 			}
 

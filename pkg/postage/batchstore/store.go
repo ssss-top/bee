@@ -194,6 +194,7 @@ func (s *store) Reset() error {
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
 func batchKey(id []byte) string {
+	// batchstore_batch_ + ...
 	return batchKeyPrefix + string(id)
 }
 

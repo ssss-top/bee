@@ -17,8 +17,10 @@ package swarm
 // binary representation of the x^y.
 //
 // (0 farthest, 255 closest, 256 self)
+// 判断字节切片的相似度，相似度越高值越高, 最大为31
 func Proximity(one, other []byte) (ret uint8) {
-	b := MaxPO/8 + 1
+	// b最大是4
+	b := MaxPO/8 + 1 // 31/8 + 1 = 4
 	if l := uint8(len(one)); b > l {
 		b = l
 	}
@@ -26,14 +28,18 @@ func Proximity(one, other []byte) (ret uint8) {
 		b = l
 	}
 	var m uint8 = 8
+	// 前4个字节的相似度
 	for i := uint8(0); i < b; i++ {
 		oxo := one[i] ^ other[i]
+		// 每个字节位的相似度
 		for j := uint8(0); j < m; j++ {
+			// 如果不相等， 则返回
 			if (oxo>>(7-j))&0x01 != 0 {
 				return i*8 + j
 			}
 		}
 	}
+	// 31
 	return MaxPO
 }
 

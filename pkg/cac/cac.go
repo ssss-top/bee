@@ -74,14 +74,17 @@ func hasher(data []byte) func([]byte) ([]byte, error) {
 // Valid checks whether the given chunk is a valid content-addressed chunk.
 func Valid(c swarm.Chunk) bool {
 	data := c.Data()
+	// SpanSize = 8
 	if len(data) < swarm.SpanSize {
 		return false
 	}
 
+	// 32 * 128 + 8 = 4104
 	if len(data) > swarm.ChunkSize+swarm.SpanSize {
 		return false
 	}
 
+	// 验证 ??
 	h := hasher(data[swarm.SpanSize:])
 	hash, _ := h(data[:swarm.SpanSize])
 	return bytes.Equal(hash, c.Address().Bytes())

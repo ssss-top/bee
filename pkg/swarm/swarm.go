@@ -69,6 +69,7 @@ func MustParseHexAddress(s string) Address {
 }
 
 // String returns a hex-encoded representation of the Address.
+// 返回address的16进制字符串
 func (a Address) String() string {
 	return hex.EncodeToString(a.b)
 }

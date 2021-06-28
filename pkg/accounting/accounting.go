@@ -145,7 +145,7 @@ func NewAccounting(
 		paymentThreshold: new(big.Int).Set(PaymentThreshold),
 		paymentTolerance: new(big.Int).Set(PaymentTolerance),
 		earlyPayment:     new(big.Int).Set(EarlyPayment),
-		disconnectLimit:  new(big.Int).Add(PaymentThreshold, PaymentTolerance),
+		disconnectLimit:  new(big.Int).Add(PaymentThreshold, PaymentTolerance), // 200000000 (mainnet)
 		logger:           Logger,
 		store:            Store,
 		pricing:          Pricing,
@@ -331,6 +331,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 }
 
 // Balance returns the current balance for the given peer.
+// 获取peer的余额，如果不存在返回0
 func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 	err = a.store.Get(peerBalanceKey(peer), &balance)
 
@@ -345,16 +346,19 @@ func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 }
 
 // SurplusBalance returns the current balance for the given peer.
+// 获取peer的盈余值，如果不存在返回0
 func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err error) {
 	err = a.store.Get(peerSurplusBalanceKey(peer), &balance)
 
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
+			// 如果不存在，返回0
 			return big.NewInt(0), nil
 		}
 		return nil, err
 	}
 
+	// 余额不能小于0
 	if balance.Cmp(big.NewInt(0)) < 0 {
 		return nil, ErrInvalidValue
 	}
@@ -388,22 +392,27 @@ func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated *big.In
 
 // peerBalanceKey returns the balance storage key for the given peer.
 func peerBalanceKey(peer swarm.Address) string {
+	// accounting_balance_ + ...
 	return fmt.Sprintf("%s%s", balancesPrefix, peer.String())
 }
 
 // peerSurplusBalanceKey returns the surplus balance storage key for the given peer
 func peerSurplusBalanceKey(peer swarm.Address) string {
+	// accounting_surplusbalance_ + ...
 	return fmt.Sprintf("%s%s", balancesSurplusPrefix, peer.String())
 }
 
 // getAccountingPeer returns the accountingPeer for a given swarm address.
 // If not found in memory it will initialize it.
+// 获取peer的accountingPeer数据
 func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	a.accountingPeersMu.Lock()
 	defer a.accountingPeersMu.Unlock()
 
+	// 在内存查找指定peer的accountingPeer信息
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
+		// 如果不存在，则新建一个
 		peerData = &accountingPeer{
 			reservedBalance:       big.NewInt(0),
 			shadowReservedBalance: big.NewInt(0),
@@ -741,6 +750,7 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 }
 
 // PrepareDebit prepares a debit operation by increasing the shadowReservedBalance
+// 构造debitAction, 并增加shadowReservedBalance的值
 func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 	accountingPeer := a.getAccountingPeer(peer)
 
@@ -749,6 +759,7 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 
 	bigPrice := new(big.Int).SetUint64(price)
 
+	// shadowReservedBalance + price
 	accountingPeer.shadowReservedBalance = new(big.Int).Add(accountingPeer.shadowReservedBalance, bigPrice)
 
 	return &debitAction{
@@ -760,32 +771,42 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 	}
 }
 
+// 如果peer的盈余值为0，则增加peer的余额，并返回. 否则，直接返回peer当前的余额
 func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *accountingPeer, price *big.Int) (*big.Int, error) {
 	cost := new(big.Int).Set(price)
 	// see if peer has surplus balance to deduct this transaction of
 
+	// 获取peer的盈余
 	surplusBalance, err := a.SurplusBalance(peer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get surplus balance: %w", err)
 	}
 
+	// 如果盈余值大于0
 	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
 		// get new surplus balance after deduct
+		// surplusBalance - cose
 		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
 
 		// if nothing left for debiting, store new surplus balance and return from debit
+		// 如果新的盈余值大于0
 		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
 			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", peer, price, newSurplusBalance)
 
+			// 存储新的盈余
 			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
 			if err != nil {
 				return nil, fmt.Errorf("failed to persist surplus balance: %w", err)
 			}
 
+			// 返回peer的余额
 			return a.Balance(peer)
 		}
+		// 如果新的盈余值小于0
 
 		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
+		// 如果盈余的值不够开销，则计算额外的花费
+		// price - surplusBalance
 		debitIncrease := new(big.Int).Sub(price, surplusBalance)
 
 		// a sanity check
@@ -796,6 +817,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 
 		// if we still have something to debit, than have run out of surplus balance,
 		// let's store 0 as surplus balance
+		// 设置peer的盈余值为0
 		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", peer, debitIncrease)
 
 		err = a.store.Put(peerSurplusBalanceKey(peer), big.NewInt(0))
@@ -803,7 +825,9 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 			return nil, fmt.Errorf("failed to persist surplus balance: %w", err)
 		}
 	}
+	// 如果盈余值为0
 
+	// 获取peer的余额，可能是0
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
@@ -812,6 +836,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 	}
 
 	// Get nextBalance by increasing current balance with price
+	// 存储peer新的余额
 	nextBalance := new(big.Int).Add(currentBalance, cost)
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
@@ -833,12 +858,14 @@ func (d *debitAction) Apply() error {
 
 	cost := new(big.Int).Set(d.price)
 
+	// peer借记的余额增加cost
 	nextBalance, err := d.accounting.increaseBalance(d.peer, d.accountingPeer, cost)
 	if err != nil {
 		return err
 	}
 
 	d.applied = true
+	// shadowReservedBalance - price
 	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 
 	tot, _ := big.NewFloat(0).SetInt(d.price).Float64()
@@ -846,6 +873,7 @@ func (d *debitAction) Apply() error {
 	a.metrics.TotalDebitedAmount.Add(tot)
 	a.metrics.DebitEventsCount.Inc()
 
+	// 如果peer欠款大于200000000, 则加入blocklist中
 	if nextBalance.Cmp(a.disconnectLimit) >= 0 {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
@@ -856,6 +884,7 @@ func (d *debitAction) Apply() error {
 }
 
 // Cleanup reduces shadow reserve if and only if debitaction have not been applied
+// 如果debit没有apply, 则shadowReservedBalance减少price
 func (d *debitAction) Cleanup() {
 	if !d.applied {
 		d.accountingPeer.lock.Lock()

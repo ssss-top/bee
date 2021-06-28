@@ -70,6 +70,7 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 
 // Get retrieves a value of the requested key. If no results are found,
 // storage.ErrNotFound will be returned.
+// 获取key的值
 func (s *store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
@@ -89,6 +90,7 @@ func (s *store) Get(key string, i interface{}) error {
 // Put stores a value for an arbitrary key. BinaryMarshaler
 // interface method will be called on the provided value
 // with fallback to JSON serialization.
+// 存储key的值
 func (s *store) Put(key string, i interface{}) (err error) {
 	var bytes []byte
 	if marshaler, ok := i.(encoding.BinaryMarshaler); ok {

@@ -29,6 +29,7 @@ var (
 // - authorisation - the batch owner is the stamp signer
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
+// 验证chunkAddr是否和ownerAddr相等
 func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
 	toSign, err := toSignDigest(chunkAddr, s.batchID)
 	if err != nil {
@@ -82,6 +83,7 @@ func (s *Stamp) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary parses a serialised stamp into id and signature.
 func (s *Stamp) UnmarshalBinary(buf []byte) error {
+	// 97
 	if len(buf) != StampSize {
 		return ErrStampInvalid
 	}
@@ -92,6 +94,7 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 
 // toSignDigest creates a digest to represent the stamp which is to be signed by
 // the owner.
+// sha3(addr+id)
 func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(addr.Bytes())
@@ -108,11 +111,13 @@ func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 // ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
 func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
 	return func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
+		// 解码stamp数据
 		stamp := new(Stamp)
 		err := stamp.UnmarshalBinary(stampBytes)
 		if err != nil {
 			return nil, err
 		}
+		// 得到batch数据
 		b, err := batchStore.Get(stamp.BatchID())
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -120,9 +125,11 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 			}
 			return nil, err
 		}
+		// 验证
 		if err = stamp.Valid(chunk.Address(), b.Owner); err != nil {
 			return nil, fmt.Errorf("chunk %s stamp invalid: %w", chunk.Address().String(), err)
 		}
+		// 填充chunk相关的数据
 		return chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth), nil
 	}
 }

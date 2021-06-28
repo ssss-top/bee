@@ -51,7 +51,9 @@ func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 	return true, nil
 }
 
+// 添加address到blocklist，阻塞duration时间
 func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err error) {
+	// 产生key, 并查找是否已经存在
 	key := generateKey(overlay)
 	_, d, err := b.get(key)
 	if err != nil {
@@ -61,10 +63,12 @@ func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err erro
 	}
 
 	// if peer is already blacklisted, blacklist it for the maximum amount of time
+	// 如果peer之前在blocklist中，使用两者间最大的阻塞时间
 	if duration < d && duration != 0 || d == 0 {
 		duration = d
 	}
 
+	// 存储
 	return b.store.Put(key, &entry{
 		Timestamp: timeNow(),
 		Duration:  duration.String(),
@@ -103,6 +107,7 @@ func (b *Blocklist) Peers() ([]p2p.Peer, error) {
 	return peers, nil
 }
 
+// 获取key还需被阻塞的时间戳和时间间隔
 func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration, err error) {
 	var e entry
 	if err := b.store.Get(key, &e); err != nil {
@@ -117,7 +122,9 @@ func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration
 	return e.Timestamp, duration, nil
 }
 
+// 根据address生成带前缀的key
 func generateKey(overlay swarm.Address) string {
+	// blocklist- + 16进制字符串
 	return keyPrefix + overlay.String()
 }
 

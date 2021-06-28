@@ -75,6 +75,7 @@ func Secp256k1PrivateKeyFromBytes(data []byte) *ecdsa.PrivateKey {
 
 // NewEthereumAddress returns a binary representation of ethereum blockchain address.
 // This function is based on github.com/ethereum/go-ethereum/crypto.PubkeyToAddress.
+// 生成地址
 func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if p.X == nil || p.Y == nil {
 		return nil, errors.New("invalid public key")

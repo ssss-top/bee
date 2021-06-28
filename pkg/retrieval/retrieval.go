@@ -75,11 +75,11 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
-		Name:    protocolName,
-		Version: protocolVersion,
+		Name:    protocolName,    // retrieval
+		Version: protocolVersion, // 1.0.0
 		StreamSpecs: []p2p.StreamSpec{
 			{
-				Name:    streamName,
+				Name:    streamName, // retrieval
 				Handler: s.handler,
 			},
 		},
@@ -96,30 +96,33 @@ const (
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	s.metrics.RequestCounter.Inc()
 
+	// 确保串行执行
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
 		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 		defer span.Finish()
 
 		sp := newSkipPeers()
 
+		// 5s
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
 		defer ticker.Stop()
 
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan swarm.Chunk, maxPeers)
+			resultC      = make(chan swarm.Chunk, maxPeers) // 5
 			errC         = make(chan error, maxPeers)
 		)
 
 		for {
+			// 如果尝试次数小于5, 则查找
 			if peerAttempt < maxPeers {
 				peerAttempt++
 
 				s.metrics.PeerRequestCounter.Inc()
 
 				go func() {
-					chunk, peer, err := s.retrieveChunk(ctx, addr, sp)
+					chunk, peer, err := s.retrieveChunk(ctx, addr, sp) // ??
 					if err != nil {
 						if !peer.IsZero() {
 							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
@@ -139,6 +142,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 			case <-ticker.C:
 				// break
 			case chunk := <-resultC:
+				// 如果找到chunk, 立即返回
 				return chunk, nil
 			case <-errC:
 				peersResults++
@@ -148,6 +152,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 			}
 
 			// all results received
+			// 如果之前的请求都已经返回, 则表示没有找到chunk
 			if peersResults >= maxPeers {
 				logger.Tracef("retrieval: failed to get chunk %s", addr)
 				return nil, storage.ErrNotFound
@@ -326,6 +331,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 	return closest, nil
 }
 
+// 根据peer请求的chunk地址，查找chunk, 并增加peer的借记款
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer func() {
@@ -335,6 +341,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			_ = stream.FullClose()
 		}
 	}()
+	// 从stream读取请求的addr
 	var req pb.Request
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
@@ -343,12 +350,14 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
+	// 根据addr查找chunk
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	addr := swarm.NewAddress(req.Addr)
-	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
+	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr) // ??
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// forward the request
+			// 如果没有找到，则转发查找请求
 			chunk, err = s.RetrieveChunk(ctx, addr)
 			if err != nil {
 				return fmt.Errorf("retrieve chunk: %w", err)
@@ -363,10 +372,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("stamp marshal: %w", err)
 	}
 
+	// 获取chunk的价格， 并构造debit
 	chunkPrice := s.pricer.Price(chunk.Address())
 	debit := s.accounting.PrepareDebit(p.Address, chunkPrice)
 	defer debit.Cleanup()
 
+	// 写chunk数据
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data:  chunk.Data(),
 		Stamp: stamp,

@@ -95,6 +95,7 @@ func (e *BlockPeerError) Error() string {
 
 // Duration represents the period for which the peer will be blocked.
 // 0 duration is treated as infinity
+// 0代表无穷大
 func (e *BlockPeerError) Duration() time.Duration {
 	return e.duration
 }
