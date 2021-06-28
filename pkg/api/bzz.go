@@ -85,6 +85,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	// Content-Type has already been validated by this time
 	contentType := r.Header.Get(contentTypeHeader)
 
+	// 得到或者创建tag
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("bzz upload file: get or create tag: %v", err)
@@ -93,9 +94,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 		return
 	}
 
+	// 如果不是新建的tag
 	if !created {
 		// only in the case when tag is sent via header (i.e. not created by this request)
+		// 如果需要的chunk个数大于0
 		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
+			// tag的total state增加chunk大小
 			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 			if err != nil {
 				s.logger.Debugf("bzz upload file: increment tag: %v", err)
@@ -107,6 +111,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	}
 
 	// Add the tag to the context
+	// 添加tag到context
 	ctx := sctx.SetTag(r.Context(), tag)
 
 	fileName = r.URL.Query().Get("name")
@@ -124,6 +129,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	}
 
 	// If filename is still empty, use the file hash as the filename
+	// 如果fileName是空，则使用file的hash作为名字
 	if fileName == "" {
 		fileName = fr.String()
 	}

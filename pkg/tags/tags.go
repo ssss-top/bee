@@ -277,5 +277,6 @@ func (ts *Tags) Close() (err error) {
 }
 
 func tagKey(uid uint32) string {
+	// tags_ + ...
 	return tagKeyPrefix + strconv.Itoa(int(uid))
 }

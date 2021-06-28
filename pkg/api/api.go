@@ -221,6 +221,7 @@ func requestModePut(r *http.Request) storage.ModePut {
 	return storage.ModePutUpload
 }
 
+// 是否使用Swarm-Encrypt
 func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }
@@ -378,14 +379,16 @@ func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 // calculateNumberOfChunks calculates the number of chunks in an arbitrary
 // content length.
 func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
+	// 小于等于4096
 	if contentLength <= swarm.ChunkSize {
 		return 1
 	}
-	branchingFactor := swarm.Branches
+	branchingFactor := swarm.Branches // 128
 	if isEncrypted {
-		branchingFactor = swarm.EncryptedBranches
+		branchingFactor = swarm.EncryptedBranches // 64
 	}
 
+	// 计算需要多少chunk
 	dataChunks := math.Ceil(float64(contentLength) / float64(swarm.ChunkSize))
 	totalChunks := dataChunks
 	intermediate := dataChunks / float64(branchingFactor)
@@ -398,6 +401,7 @@ func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	return int64(totalChunks) + 1
 }
 
+// 计算需要的chunk个数
 func requestCalculateNumberOfChunks(r *http.Request) int64 {
 	if !strings.Contains(r.Header.Get(contentTypeHeader), "multipart") && r.ContentLength > 0 {
 		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))

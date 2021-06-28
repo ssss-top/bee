@@ -100,6 +100,7 @@ func (t *Tag) FinishRootSpan() {
 }
 
 // IncN increments the count for a state
+// tag的state增加n
 func (t *Tag) IncN(state State, n int64) error {
 	var v *int64
 	switch state {
