@@ -156,7 +156,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		bytes := chunk.Address().Bytes()
 		// peer的地址是否和chunk的地址更相似一些
 		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-			// 节点比邻居节点更接近chunk
+			// 本地节点比邻居节点更接近chunk
 			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
 				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor) // 3s
 				defer canceld()
@@ -188,10 +188,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			return ErrOutOfDepthReplication
 		}
 	}
+	// peer不是full节点，或者peer的距离比本节点的距离大(本节点地址距离chunk地址更近)
 
 	// forwarding replication
 	storedChunk := false
+	// 如果节点比邻居节点更靠近chunk
 	if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+		// 持久化
 		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 		if err != nil {
 			ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
@@ -203,10 +206,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
+	// 将chunk发送到距离它最近的peer, 并且扣除peer的余额
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
+			// 如果目标节点是本节点，并且之前没有存储
 			if !storedChunk {
+				// 持久化
 				_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 				if err != nil {
 					return fmt.Errorf("chunk store: %w", err)
@@ -216,13 +222,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			count := 0
 			// Push the chunk to some peers in the neighborhood in parallel for replication.
 			// Any errors here should NOT impact the rest of the handler.
+			// 发送chunk数据到3个邻居节点
 			err = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
 
 				// skip forwarding peer
+				// 忽略转发的peer
 				if peer.Equal(p.Address) {
 					return false, false, nil
 				}
 
+				// 最多转发3个peer
 				if count == nPeersToPushsync {
 					return true, false, nil
 				}
@@ -241,9 +250,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					}()
 
 					// price for neighborhood replication
+					// 发送给peer的price
 					receiptPrice := ps.pricer.PeerPrice(peer, chunk.Address())
 
-					ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+					ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor) // 3s
 					defer cancel()
 
 					err = ps.accounting.Reserve(ctx, peer, receiptPrice)
@@ -268,6 +278,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						}
 					}()
 
+					// 将chunk发送给peer
 					w, r := protobuf.NewWriterAndReader(streamer)
 					stamp, err := chunk.Stamp().MarshalBinary()
 					if err != nil {
@@ -282,6 +293,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						return
 					}
 
+					// 接受receipt
 					var receipt pb.Receipt
 					if err = r.ReadMsgWithContext(ctx, &receipt); err != nil {
 						return
@@ -292,6 +304,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						return
 					}
 
+					// peer借记的余额减少price
 					err = ps.accounting.Credit(peer, receiptPrice)
 
 				}(peer)
@@ -308,6 +321,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 
 			// return back receipt
+			// 构造debit
 			debit := ps.accounting.PrepareDebit(p.Address, price)
 			defer debit.Cleanup()
 
@@ -316,12 +330,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
+			// 应用debit
 			return debit.Apply()
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
 
 	}
 
+	// 构造debit
 	debit := ps.accounting.PrepareDebit(p.Address, price)
 	defer debit.Cleanup()
 
@@ -330,6 +346,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
+	// 应用debit
 	return debit.Apply()
 }
 
@@ -346,6 +363,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		Signature: r.Signature}, nil
 }
 
+// 将chunk发送到距离它最近的peer, 并且扣除peer的余额
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
@@ -359,11 +377,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 	if retryAllowed {
 		// only originator retries
+		// 3
 		allowedRetries = maxPeers
 	}
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
+		// 找到距离chunk最近的peer
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipPeers...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
@@ -371,18 +391,21 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
+		// 如果失败次数太多，则将peer加入到skipPeers中
 		if !ps.failedRequests.Useful(peer, ch.Address()) {
 			skipPeers = append(skipPeers, peer)
 			ps.metrics.TotalFailedCacheHits.Inc()
 			continue
 		}
+		// 将peer添加到skipPeers中
 		skipPeers = append(skipPeers, peer)
 		ps.metrics.TotalSendAttempts.Inc()
 
 		go func(peer swarm.Address, ch swarm.Chunk) {
-			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
+			ctxd, canceld := context.WithTimeout(ctx, defaultTTL) // 20s
 			defer canceld()
 
+			// 将chunk发送到peer, 并减少peer的余额
 			r, attempted, err := ps.pushPeer(ctxd, peer, ch)
 			// attempted is true if we get past accounting and actually attempt
 			// to send the request to the peer. If we dont get past accounting, we
@@ -420,15 +443,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 	return nil, ErrNoPush
 }
 
+// 将chunk发送到peer, 并减少peer的余额
 func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*pb.Receipt, bool, error) {
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
 	// Reserve to see whether we can make the request
+	// peer的reserve值增加price
 	err := ps.accounting.Reserve(ctx, peer, receiptPrice)
 	if err != nil {
 		return nil, false, fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 	}
+	// peer的reserve值减少price
 	defer ps.accounting.Release(peer, receiptPrice)
 
 	stamp, err := ch.Stamp().MarshalBinary()
@@ -442,6 +468,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	}
 	defer streamer.Close()
 
+	// 将chunk发送到peer
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Address: ch.Address().Bytes(),
@@ -455,6 +482,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	ps.metrics.TotalSent.Inc()
 
 	// if you manage to get a tag, just increment the respective counter
+	// chunk的stateSent tag值加1
 	t, err := ps.tagger.Get(ch.TagID())
 	if err == nil && t != nil {
 		err = t.Inc(tags.StateSent)
@@ -463,6 +491,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		}
 	}
 
+	// 获取receipt
 	var receipt pb.Receipt
 	if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
 		_ = streamer.Reset()
@@ -474,6 +503,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
+	// peer的余额减少price
 	err = ps.accounting.Credit(peer, receiptPrice)
 	if err != nil {
 		return nil, true, err
@@ -502,6 +532,7 @@ func newFailedRequestCache() *failedRequestCache {
 }
 
 func keyForReq(peer swarm.Address, chunk swarm.Address) string {
+	// peer/chunk
 	return fmt.Sprintf("%s/%s", peer, chunk)
 }
 
@@ -524,6 +555,7 @@ func (f *failedRequestCache) RecordSuccess(peer swarm.Address, chunk swarm.Addre
 	f.cache.Remove(keyForReq(peer, chunk))
 }
 
+// 以'peer/chunk'为key的值是否小于3, 或者不存在
 func (f *failedRequestCache) Useful(peer swarm.Address, chunk swarm.Address) bool {
 	f.mtx.RLock()
 	val, found := f.cache.Get(keyForReq(peer, chunk))
@@ -531,5 +563,5 @@ func (f *failedRequestCache) Useful(peer swarm.Address, chunk swarm.Address) boo
 	if !found {
 		return true
 	}
-	return val.(int) < failureThreshold
+	return val.(int) < failureThreshold // 3
 }

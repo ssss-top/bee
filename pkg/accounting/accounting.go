@@ -157,31 +157,38 @@ func NewAccounting(
 }
 
 // Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
+// peer的reservedBalance值增加price, 并在合适的情况下进行清算
 func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	// 获取peer的余额
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
 			return fmt.Errorf("failed to load balance: %w", err)
 		}
 	}
+	// -currentBalance
 	currentDebt := new(big.Int).Neg(currentBalance)
 	if currentDebt.Cmp(big.NewInt(0)) < 0 {
+		// 如果currentDebt小于0， 则设置它为0
 		currentDebt.SetInt64(0)
 	}
 
+	// reservedBalance + price
 	bigPrice := new(big.Int).SetUint64(price)
 	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 
 	// debt if all reserved operations are successfully credited excluding debt created by surplus balance
+	// currentDebt + nextReserved
 	expectedDebt := new(big.Int).Add(currentDebt, nextReserved)
 
 	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
 	if threshold.Cmp(a.earlyPayment) > 0 {
+		// threshold - earlyPayment
 		threshold.Sub(threshold, a.earlyPayment)
 	} else {
 		threshold.SetInt64(0)
@@ -194,15 +201,20 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	}
 
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
+	// cyrrentDebt + reservedBalance + price + additionalDebt
 	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
 	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
 	// in other words this the debt the other node sees if everything pending is successful
+	// increasedExpectedDebt - shadowReservedBalance
 	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, accountingPeer.shadowReservedBalance)
 
 	// If our expected debt reduced by what could have been credited on the other side already is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
+	// increasedExpectedDebtReduced = cyrrentDebt + reservedBalance + price + additionalDebt - shadowReservedBalance
+	// 如果increasedExpectedDebtReduced大于threshold(90000000), 并且peer当前的余额小于0, 则进行清算
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
+		// ??
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
@@ -211,6 +223,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
 	// this can happen if there is a large number of concurrent requests to the same peer
+	// 如果increasedExpectedDebt大于paymentThreshold(100000000), 则返回错误
 	if increasedExpectedDebt.Cmp(accountingPeer.paymentThreshold) > 0 {
 		a.metrics.AccountingBlocksCount.Inc()
 		return ErrOverdraft
@@ -221,6 +234,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 }
 
 // Release releases reserved funds.
+// peer的reserve减少price, 如果不足则设置为0
 func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	accountingPeer := a.getAccountingPeer(peer)
 
@@ -231,6 +245,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 
 	// NOTE: this should never happen if Reserve and Release calls are paired.
 	if bigPrice.Cmp(accountingPeer.reservedBalance) > 0 {
+		// 如果price比reservedBalance大
 		a.logger.Error("attempting to release more balance than was reserved for peer")
 		accountingPeer.reservedBalance.SetUint64(0)
 	} else {
@@ -240,6 +255,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 
 // Credit increases the amount of credit we have with the given peer
 // (and decreases existing debt).
+// peer借记的余额减少price
 func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
@@ -254,6 +270,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	}
 
 	// Calculate next balance by decreasing current balance with the price we credit
+	// currentBalance - price
 	nextBalance := new(big.Int).Sub(currentBalance, new(big.Int).SetUint64(price))
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)

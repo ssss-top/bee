@@ -55,6 +55,7 @@ func (st *StampIssuer) inc(addr swarm.Address) error {
 // toBucket calculates the index of the collision bucket for a swarm address
 // using depth as collision bucket depth
 func toBucket(depth uint8, addr swarm.Address) uint32 {
+	// addr的前四个字节
 	i := binary.BigEndian.Uint32(addr.Bytes()[:4])
 	return i >> (32 - depth)
 }

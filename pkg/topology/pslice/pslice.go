@@ -75,6 +75,7 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	var binEnd int
 	for i := 0; i <= len(bins)-1; i++ {
 		if i == len(bins)-1 {
+			// 如果i是最后一个，binEnd = len(peers)
 			binEnd = len(peers)
 		} else {
 			binEnd = int(bins[i+1])
@@ -207,6 +208,7 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	s.bins = bins
 }
 
+// 如果peer和PSlice.baseBytes的相似度大于s.bins的个数，则返回s.bins个数-1， 否则返回他们的相似度
 func (s *PSlice) po(peer []byte) uint8 {
 
 	po := swarm.Proximity(s.baseBytes, peer)

@@ -347,6 +347,7 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 			exists[i] = true
 			continue
 		}
+		// 构造stamp
 		stamp, err := p.stamper.Stamp(c.Address())
 		if err != nil {
 			return nil, err

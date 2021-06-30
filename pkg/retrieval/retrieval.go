@@ -122,7 +122,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				s.metrics.PeerRequestCounter.Inc()
 
 				go func() {
-					chunk, peer, err := s.retrieveChunk(ctx, addr, sp) // ??
+					chunk, peer, err := s.retrieveChunk(ctx, addr, sp)
 					if err != nil {
 						if !peer.IsZero() {
 							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
@@ -169,6 +169,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers) (chunk swarm.Chunk, peer swarm.Address, err error) {
 	startTimer := time.Now()
 
+	// v, sourcePeerAddr表示请求chunk数据的peer地址
 	v := ctx.Value(requestSourceContextKey{})
 	sourcePeerAddr := swarm.Address{}
 	// allow upstream requests if this node is the source of the request
@@ -185,18 +186,23 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		allowUpstream = false
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout) // 10s
 	defer cancel()
+	// 查找距离addr最近的peer
 	peer, err = s.closestPeer(addr, sp.All(), allowUpstream)
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
 
+	// 计算peer节点和本节点的相似度
 	peerPO := swarm.Proximity(s.addr.Bytes(), peer.Bytes())
 
+	// 如果sourcePeerAddr不为0
 	if !sourcePeerAddr.IsZero() {
 		// is forwarded request
+		// 请求源peer和chunk地址的相似度
 		sourceAddrPO := swarm.Proximity(sourcePeerAddr.Bytes(), addr.Bytes())
+		// 距离最近的peer和chunk地址的相似度
 		addrPO := swarm.Proximity(peer.Bytes(), addr.Bytes())
 
 		poGain := int(addrPO) - int(sourceAddrPO)
@@ -233,6 +239,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 	defer s.accounting.Release(peer, chunkPrice)
 
+	// 请求chunk数据
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
@@ -241,6 +248,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		return nil, peer, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
 
+	// 读取chunk数据
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
 		s.metrics.TotalErrors.Inc()
@@ -251,6 +259,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		Observe(time.Since(startTimer).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
+	// 构造chunk, 并验证
 	stamp := new(postage.Stamp)
 	err = stamp.UnmarshalBinary(d.Stamp)
 	if err != nil {
@@ -266,6 +275,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 
 	// credit the peer after successful delivery
+	// peer借记的余额减少price
 	err = s.accounting.Credit(peer, chunkPrice)
 	if err != nil {
 		return nil, peer, err
@@ -298,6 +308,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		}
 		switch dcmp {
 		case 0:
+			// closest和peer距离相等
 			// do nothing
 		case -1:
 			// current peer is closer
@@ -325,6 +336,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), s.addr.String(), err)
 	}
 	if dcmp != 1 {
+		// 如果closest不是最接近chunk的, 则返回空
 		return swarm.Address{}, topology.ErrNotFound
 	}
 

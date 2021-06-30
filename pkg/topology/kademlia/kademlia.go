@@ -830,7 +830,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.connectedPeers.Remove(peer.Address)
 
-	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(timeToRetry))
+	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(timeToRetry)) // 1min
 
 	k.collector.Record(peer.Address, metrics.PeerLogOut(time.Now()))
 
@@ -896,6 +896,7 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFun
 	return closest, nil
 }
 
+// 地址a在addresses切片中
 func isIn(a swarm.Address, addresses []p2p.Peer) bool {
 	for _, v := range addresses {
 		if v.Address.Equal(a) {
@@ -906,6 +907,7 @@ func isIn(a swarm.Address, addresses []p2p.Peer) bool {
 }
 
 // ClosestPeer returns the closest peer to a given address.
+// 返回距离addr最近的peer
 func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
@@ -932,20 +934,24 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 
 		// kludge: hotfix for topology peer inconsistencies bug
 		if !isIn(peer, peers) {
+			// 如果peer不在peers切片中，则将它添加到peersToDisconnect中
 			a := swarm.NewAddress(peer.Bytes())
 			peersToDisconnect = append(peersToDisconnect, a)
 			return false, false, nil
 		}
 
+		// 距离比较，依据地址的相似性
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
 		if err != nil {
 			return false, false, err
 		}
 		switch dcmp {
 		case 0:
+			// 相等
 			// do nothing
 		case -1:
 			// current peer is closer
+			// 当前的peer是最近的
 			closest = peer
 		case 1:
 			// closest is already closer to chunk
@@ -979,7 +985,7 @@ func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
 	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
 }
 
-// // EachNeighbor iterates from closest bin to farthest of the neighborhood peers.
+// EachNeighbor iterates from closest bin to farthest of the neighborhood peers.
 func (k *Kad) EachNeighbor(f topology.EachPeerFunc) error {
 	depth := k.NeighborhoodDepth()
 	fn := func(a swarm.Address, po uint8) (bool, bool, error) {
