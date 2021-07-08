@@ -114,6 +114,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			fullNode := c.config.GetBool(optionNameFullNode)
 
 			if bootNode && !fullNode {
+				// bootnode必须使用full模式
 				return errors.New("boot node must be started as a full node")
 			}
 
