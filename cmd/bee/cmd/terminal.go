@@ -26,6 +26,7 @@ func (stdInPasswordReader) ReadPassword() (password string, err error) {
 	return string(v), err
 }
 
+// 读取密码
 func terminalPromptPassword(cmd *cobra.Command, r passwordReader, title string) (password string, err error) {
 	cmd.Print(title + ": ")
 	password, err = r.ReadPassword()
@@ -36,6 +37,7 @@ func terminalPromptPassword(cmd *cobra.Command, r passwordReader, title string) 
 	return password, nil
 }
 
+// 读取密码，并验证是否一致
 func terminalPromptCreatePassword(cmd *cobra.Command, r passwordReader) (password string, err error) {
 	cmd.Println("Bee node is booting up for the first time. Please provide a new password.")
 	p1, err := terminalPromptPassword(cmd, r, "Password")

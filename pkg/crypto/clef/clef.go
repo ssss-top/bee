@@ -46,6 +46,7 @@ type clefSigner struct {
 }
 
 // DefaultIpcPath returns the os-dependent default ipc path for clef.
+// 返回默认的ipc路径
 func DefaultIpcPath() (string, error) {
 	socket := "clef.ipc"
 	// on windows clef uses top level pipes
@@ -75,6 +76,7 @@ func selectAccount(clef ExternalSignerInterface, ethAddress *common.Address) (ac
 	}
 
 	if ethAddress == nil {
+		// 选择第一个账户
 		// pick the first account as the one we use
 		return clefAccounts[0], nil
 	}
@@ -90,6 +92,7 @@ func selectAccount(clef ExternalSignerInterface, ethAddress *common.Address) (ac
 // NewSigner creates a new connection to the signer at endpoint.
 // If ethAddress is nil the account with index 0 will be selected. Otherwise it will verify the requested account actually exists.
 // As clef does not expose public keys it signs a test message to recover the public key.
+// 构造signer
 func NewSigner(clef ExternalSignerInterface, client Client, recoverFunc crypto.RecoverFunc, ethAddress *common.Address) (signer crypto.Signer, err error) {
 	account, err := selectAccount(clef, ethAddress)
 	if err != nil {
@@ -98,11 +101,13 @@ func NewSigner(clef ExternalSignerInterface, client Client, recoverFunc crypto.R
 
 	// clef currently does not expose the public key
 	// sign some data so we can recover it
+	// 签名数据
 	sig, err := clef.SignData(account, accounts.MimetypeTextPlain, clefRecoveryMessage)
 	if err != nil {
 		return nil, err
 	}
 
+	// 恢复公钥
 	pubKey, err := recoverFunc(sig, clefRecoveryMessage)
 	if err != nil {
 		return nil, err

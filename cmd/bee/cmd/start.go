@@ -255,6 +255,7 @@ type signerConfig struct {
 	pssPrivateKey    *ecdsa.PrivateKey
 }
 
+// 构造clef signer
 func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
 	for {
 		externalSigner, err = external.NewExternalSigner(endpoint)
@@ -274,9 +275,11 @@ func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (ext
 func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
 	var keystore keystore.Service
 	if c.config.GetString(optionNameDataDir) == "" {
+		// 基于内存的keystore
 		keystore = memkeystore.New()
 		logger.Warning("data directory not provided, keys are not persisted")
 	} else {
+		// 基于文件的keystore
 		keystore = filekeystore.New(filepath.Join(c.config.GetString(optionNameDataDir), "keys"))
 	}
 
@@ -285,8 +288,10 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	var password string
 	var publicKey *ecdsa.PublicKey
 	if p := c.config.GetString(optionNamePassword); p != "" {
+		// 选项指定密码
 		password = p
 	} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
+		// 从密码文件读取密码
 		b, err := ioutil.ReadFile(pf)
 		if err != nil {
 			return nil, err
@@ -301,11 +306,13 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 			return nil, err
 		}
 		if exists {
+			// 如果libp2p的key存在，则从终端读取密码
 			password, err = terminalPromptPassword(cmd, c.passwordReader, "Password")
 			if err != nil {
 				return nil, err
 			}
 		} else {
+			// 读取密码，并进行验证
 			password, err = terminalPromptCreatePassword(cmd, c.passwordReader)
 			if err != nil {
 				return nil, err
@@ -313,6 +320,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		}
 	}
 
+	// 使用clef构建signer
 	if c.config.GetBool(optionNameClefSignerEnable) {
 		endpoint := c.config.GetString(optionNameClefSignerEndpoint)
 		if endpoint == "" {
@@ -322,6 +330,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 			}
 		}
 
+		// 构造clef signer
 		externalSigner, err := waitForClef(logger, 5, endpoint)
 		if err != nil {
 			return nil, err
@@ -332,6 +341,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 			return nil, err
 		}
 
+		// 是否使用指定的地址
 		wantedAddress := c.config.GetString(optionNameClefSignerEthereumAddress)
 		var overlayEthAddress *common.Address = nil
 		// if wantedAddress was specified use that, otherwise clef account 0 will be selected.
@@ -340,6 +350,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 			overlayEthAddress = &ethAddress
 		}
 
+		// 构建signer
 		signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover, overlayEthAddress)
 		if err != nil {
 			return nil, err
